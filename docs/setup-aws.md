@@ -48,7 +48,7 @@ Allow outbound HTTPS (443) from application hosts to:
 
 ```ruby
 # Gemfile
-gem "ms_graph_mailer", github: "VandaPharma/ms_graph_mailer", tag: "v1.0.0"
+gem "ms_graph_mailer", github: "VandaPharma/ms_graph_mailer", branch: "main"
 gem "aws-sdk-secretsmanager", require: false
 ```
 

@@ -4,11 +4,22 @@
 # send ActionMailer mail through Microsoft Graph.
 # Every option is documented in
 # https://github.com/VandaPharma/ms_graph_mailer/blob/main/docs/configuration.md
+#
+# Calling MsGraphMailer.configure makes :ms_graph the ActionMailer delivery method.
+# Call it only where mail should go through Graph; elsewhere keep your own delivery
+# method (letter_opener, :test, SMTP, ...). For example:
+#
+#   if Rails.env.production? || ENV["MAIL_DELIVERY_METHOD"] == "microsoft_graph"
+#     MsGraphMailer.configure do |config|
+#       ...
+#     end
+#   end
 MsGraphMailer.configure do |config|
   # ---------------------------------------------------------------------------
   # Mailbox (same setting as GitLab's microsoft_graph_mailer 0.1.0)
   # ---------------------------------------------------------------------------
-  # The mailbox Graph sends from. Every message is sent as this mailbox.
+  # The mailbox Graph sends from. Every message is sent as this mailbox, so set
+  # your mailers' From to this address (e.g. `default from:` in ApplicationMailer).
   config.user_id = "notifications@example.com"
 
   # true  - same as GitLab's microsoft_graph_mailer 0.1.0: MIME send, a copy is kept in the
@@ -49,33 +60,11 @@ MsGraphMailer.configure do |config|
   # ---------------------------------------------------------------------------
   # From header
   # ---------------------------------------------------------------------------
-  # Display name for the default From. A callable is evaluated for every message.
-  config.display_name = -> { "<%= Rails.application.class.module_parent_name.titleize %>" }
-
-  # Sets ActionMailer's default From to "<display_name> <user_id>".
-  # Remove any `default from:` in ApplicationMailer, which would override it.
-  config.set_default_from = true
-
-  # A message whose From is not user_id is sent as user_id, shown as
-  # "<original name> via <display_name>", with Reply-To set to the original address.
+  # Graph can only send as user_id. With enforce_from, a message whose From is
+  # another address is sent as user_id, named "<original name> via <display_name>",
+  # with Reply-To set to the original address.
   config.enforce_from = true
-
-  # ---------------------------------------------------------------------------
-  # Delivery method switch
-  # ---------------------------------------------------------------------------
-  # nil (unset)       - Microsoft Graph in graph_environments; other environments
-  #                     keep their own setting (letter_opener, :test, ...).
-  # "microsoft_graph" - always Microsoft Graph.
-  # "smtp"            - smtp_settings below (rollback path). Takes effect on restart.
-  config.delivery_method    = ENV["MAIL_DELIVERY_METHOD"]
-  config.graph_environments = %w[staging production]
-
-  # Used only when MAIL_DELIVERY_METHOD=smtp.
-  # config.smtp_settings = {
-  #   address: "smtp.example.com",
-  #   port: 587,
-  #   enable_starttls_auto: true
-  # }
+  config.display_name = -> { "<%= Rails.application.class.module_parent_name.titleize %>" }
 
   # ---------------------------------------------------------------------------
   # Reliability

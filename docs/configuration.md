@@ -12,6 +12,11 @@ end
 every option. The configuration is validated when ActionMailer loads; an invalid combination
 raises `MsGraphMailer::ConfigurationError` at boot, not at the first email.
 
+Calling `MsGraphMailer.configure` makes `:ms_graph` the ActionMailer delivery method. The gem has
+no SMTP or delivery-method switch: call `configure` only where mail should go through Graph (see
+[rails-integration.md](rails-integration.md#graph-in-some-environments-smtp-or-others-elsewhere)).
+Your mailers' default From is also set by your application, not by the gem.
+
 ## Mailbox and endpoints (same as GitLab's 0.1.0)
 
 | Option | Default | Description |
@@ -83,34 +88,13 @@ is set, boot fails with a message listing both options (only in environments tha
 
 ## From header
 
-| Option | Default | Description |
-|---|---|---|
-| `display_name` | `nil` | Display name for the default From. String or callable (evaluated for every message, so e.g. a database-backed name can change without a restart): `-> { AppConfig["MAILER_EMAIL_NAME"] }` |
-| `set_default_from` | `false` | When `true`, sets `ActionMailer::Base.default from:` to `"<display_name> <user_id>"`. A `default from:` in `ApplicationMailer` overrides it, so remove that. |
-| `enforce_from` | `true` | A message whose From is not `user_id` is sent as `user_id` with the name `"<original name or address> via <display_name>"` and Reply-To set to the original address (unless Reply-To is already set). Prevents Exchange `ErrorSendAsDenied`. A missing From becomes `"<display_name> <user_id>"`. |
-
-Helpers:
-
-```ruby
-MsGraphMailer.default_from                  # "My App <notifications@example.com>"
-MsGraphMailer.from_on_behalf_of("Jane Doe") # "Jane Doe via My App <notifications@example.com>"
-```
-
-## Delivery method switch
+Graph can only send as `user_id`, so your mailers should send From that address. The gem does not
+set a default From; set it in your application (e.g. `default from:` in `ApplicationMailer`).
 
 | Option | Default | Description |
 |---|---|---|
-| `delivery_method` | `ENV["MAIL_DELIVERY_METHOD"]` | `"microsoft_graph"`: Graph in every environment. `"smtp"`: `smtp_settings`. `nil`/blank: Graph in `graph_environments`, otherwise the environment's own delivery method is left alone. Any other value raises at boot. |
-| `graph_environments` | `%w[production]` | Rails environments that use Graph when `delivery_method` is blank |
-| `smtp_settings` | `nil` | ActionMailer SMTP settings, required when `delivery_method` is `"smtp"` |
-
-| `MAIL_DELIVERY_METHOD` | In `graph_environments` | Elsewhere (e.g. development, test) |
-|---|---|---|
-| unset | Microsoft Graph | unchanged (`letter_opener`, `:test`, ...) |
-| `microsoft_graph` | Microsoft Graph | Microsoft Graph |
-| `smtp` | SMTP | SMTP |
-
-Changing the variable takes effect when the process restarts.
+| `enforce_from` | `true` | A message whose From is not `user_id` is sent as `user_id` with the name `"<original name or address> via <display_name>"` and Reply-To set to the original address (unless Reply-To is already set). Prevents Exchange `ErrorSendAsDenied`. A missing From becomes `"<display_name> <user_id>"`. Only applies when `user_id` is an email address. |
+| `display_name` | `nil` | App name used by `enforce_from`. String or callable (evaluated for every message): `-> { AppConfig["MAILER_EMAIL_NAME"] }` |
 
 ## Reliability
 
@@ -120,7 +104,7 @@ Changing the variable takes effect when the process restarts.
 | `read_timeout` | `20` | Seconds to wait for a response |
 | `max_transient_retries` | `2` | In-process retries for 429, 5xx and connections that never opened (`deliver_now` and `deliver_later`) |
 | `max_retry_sleep` | `2` | Upper bound in seconds for each in-process wait (`Retry-After` is honoured up to this) |
-| `job_retry_attempts` | `5` | `ActionMailer::MailDeliveryJob.retry_on TransientError, attempts:` for `deliver_later`. `1` or less disables it. Backoff: `:polynomially_longer` (Rails ≥ 7.1) or `:exponentially_longer` (Rails 6.1/7.0). With SMTP, `Net::SMTPServerBusy` and `Net::OpenTimeout` are retried. |
+| `job_retry_attempts` | `5` | `ActionMailer::MailDeliveryJob.retry_on TransientError, attempts:` for `deliver_later`. `1` or less disables it. Backoff: `:polynomially_longer` (Rails ≥ 7.1) or `:exponentially_longer` (Rails 6.1/7.0). Added only when the gem is configured. |
 
 Read timeouts are never retried automatically: Graph may already have accepted the message.
 
@@ -128,11 +112,11 @@ Read timeouts are never retried automatically: Graph may already have accepted t
 
 | Option | Default | Description |
 |---|---|---|
-| `logger` | `Rails.logger` | Logs the active delivery method at boot, From rewrites, credential reloads. Never secrets, tokens, recipients or content. |
+| `logger` | `Rails.logger` | Logs the Graph configuration at boot, From rewrites, credential reloads. Never secrets, tokens, recipients or content. |
 | `error_notifier` | Honeybadger, if loaded | `->(error, context) { ... }`, called when a Secrets Manager refresh fails while a cached value is still in use |
 
 ## Environment variables
 
-The gem reads only `MAIL_DELIVERY_METHOD` (as the default of `delivery_method`). Other
-variables are read only if your initializer uses them, for example the generated template's
-`ENTRA_MAILER_SECRET_ID`, `ENTRA_MAILER_SECRET_REGION` and `ENTRA_SECRET_TTL_SECONDS`.
+The gem reads no environment variables itself. Your initializer may, for example the generated
+template's `ENTRA_MAILER_SECRET_ID`, `ENTRA_MAILER_SECRET_REGION` and `ENTRA_SECRET_TTL_SECONDS`, or
+`ENTRA_TENANT_ID` / `ENTRA_CLIENT_ID` / `ENTRA_CLIENT_SECRET` for credentials in the initializer.

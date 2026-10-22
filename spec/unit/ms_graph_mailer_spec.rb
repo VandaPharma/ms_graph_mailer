@@ -3,49 +3,33 @@
 require_relative "unit_helper"
 
 RSpec.describe MsGraphMailer do
-  before do
-    described_class.configure do |config|
-      config.user_id = "notifications@example.com"
-      config.display_name = -> { "Clinical App" }
-    end
-  end
-
   it "has a version" do
     expect(MsGraphMailer::VERSION).to match(/\A\d+\.\d+\.\d+/)
   end
 
-  describe ".default_from" do
-    it "combines the display name and the mailbox" do
-      expect(described_class.default_from).to eq("Clinical App <notifications@example.com>")
+  describe ".configure" do
+    it "is not configured until configure is called" do
+      expect(described_class.configured?).to be(false)
     end
 
-    it "evaluates a callable display name on every call" do
-      name = "First"
-      described_class.config.display_name = -> { name }
-      expect(described_class.default_from).to eq("First <notifications@example.com>")
-      name = "Second"
-      expect(described_class.default_from).to eq("Second <notifications@example.com>")
+    it "yields the configuration and marks the gem configured" do
+      described_class.configure { |config| config.user_id = "notifications@example.com" }
+      expect(described_class.configured?).to be(true)
+      expect(described_class.config.user_id).to eq("notifications@example.com")
     end
 
-    it "returns the bare address without a display name" do
-      described_class.config.display_name = nil
-      expect(described_class.default_from).to eq("notifications@example.com")
-    end
-
-    it "quotes names that need it" do
-      described_class.config.display_name = "Smith, Jones & Co"
-      expect(described_class.default_from).to eq('"Smith, Jones & Co" <notifications@example.com>')
+    it "is cleared by reset!" do
+      described_class.configure { |config| config.user_id = "notifications@example.com" }
+      described_class.reset!
+      expect(described_class.configured?).to be(false)
+      expect(described_class.config.user_id).to be_nil
     end
   end
 
-  describe ".from_on_behalf_of" do
-    it "names the person and the app on the shared mailbox" do
-      expect(described_class.from_on_behalf_of("Jane Doe"))
-        .to eq("Jane Doe via Clinical App <notifications@example.com>")
-    end
-
-    it "falls back to the app name for a blank person" do
-      expect(described_class.from_on_behalf_of(" ")).to eq("Clinical App <notifications@example.com>")
+  it "does not offer SMTP or delivery-method switching" do
+    config = described_class.config
+    %i[delivery_method smtp_settings graph_environments set_default_from].each do |option|
+      expect(config).not_to respond_to(option)
     end
   end
 end

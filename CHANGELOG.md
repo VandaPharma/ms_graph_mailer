@@ -22,8 +22,10 @@ All notable changes to this project are documented here. The format follows
 - In-memory access token cache (no `oauth2` dependency).
 - HTTP timeouts, in-process retries for throttling/5xx/connection failures, `TransientError`, and
   `ActionMailer::MailDeliveryJob.retry_on` for `deliver_later`.
-- `MAIL_DELIVERY_METHOD` switch between Microsoft Graph and SMTP, with `graph_environments`.
-- `display_name`, `set_default_from`, `enforce_from`, `default_from` and `from_on_behalf_of`.
+- `enforce_from` and `display_name`: a From on another address is sent as `user_id`
+  (`"<name> via <display_name>"`, Reply-To kept) instead of being rejected by Exchange.
+- Graph only: calling `MsGraphMailer.configure` selects `:ms_graph`; choosing another delivery
+  method and the default From stay in the application.
 - `MsGraphMailer.configure`, `ms_graph_mailer:install` generator, and `ms_graph_mailer:check` /
   `ms_graph_mailer:smoke` rake tasks.
 - Support for Ruby 3.1–3.4 and Rails 6.1–8.1.

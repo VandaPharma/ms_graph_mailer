@@ -9,12 +9,7 @@ MsGraphMailer.configure do |config|
   config.client_id     = "client-id"
   config.client_secret = "client-secret"
 
-  config.display_name     = -> { "Dummy App" }
-  config.set_default_from = true
-
-  config.delivery_method    = nil
-  config.graph_environments = %w[test]
-  config.smtp_settings      = { address: "smtp.example.com", port: 587 }
+  config.display_name = -> { "Dummy App" }
 
   config.max_retry_sleep = 1
 end

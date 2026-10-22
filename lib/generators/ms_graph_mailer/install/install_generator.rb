@@ -17,10 +17,10 @@ module MsGraphMailer
         say <<~TEXT
 
           Next steps:
-            1. Edit config/initializers/ms_graph_mailer.rb (user_id, credentials, display_name).
-            2. If ApplicationMailer sets `default from:`, remove it when set_default_from is true.
-            3. Remove any other initializer that sets ActionMailer delivery_method / smtp_settings.
-            4. Run: bin/rails ms_graph_mailer:check
+            1. Edit config/initializers/ms_graph_mailer.rb (user_id, credentials) and decide in
+               which environments it runs: configuring it makes :ms_graph the delivery method.
+            2. Make your mailers send From the user_id mailbox (e.g. `default from:` in ApplicationMailer).
+            3. Run: bin/rails ms_graph_mailer:check
         TEXT
       end
     end

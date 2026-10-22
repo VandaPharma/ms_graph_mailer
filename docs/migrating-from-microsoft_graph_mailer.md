@@ -6,7 +6,7 @@ switching means renaming the gem, the module and the delivery method.
 
 | GitLab's microsoft_graph_mailer 0.1.0 | ms_graph_mailer |
 |---|---|
-| `gem "microsoft_graph_mailer"` | `gem "ms_graph_mailer", github: "VandaPharma/ms_graph_mailer", tag: "v1.0.0"` |
+| `gem "microsoft_graph_mailer"` | `gem "ms_graph_mailer", github: "VandaPharma/ms_graph_mailer", branch: "main"` |
 | `config.action_mailer.delivery_method = :microsoft_graph` | `config.action_mailer.delivery_method = :ms_graph`, or let the gem set it from `MsGraphMailer.configure` |
 | `config.action_mailer.microsoft_graph_settings = { user_id:, tenant:, client_id:, client_secret:, azure_ad_endpoint:, graph_endpoint: }` | `config.action_mailer.ms_graph_settings = { ... }` with the same keys, or `MsGraphMailer.configure` |
 | `MicrosoftGraphMailer::Delivery.new(settings)` | `MsGraphMailer::Delivery.new(settings)` (same keys) |
@@ -19,7 +19,7 @@ switching means renaming the gem, the module and the delivery method.
 1. Gemfile: replace `gem "microsoft_graph_mailer"` with
 
    ```ruby
-   gem "ms_graph_mailer", github: "VandaPharma/ms_graph_mailer", tag: "v1.0.0"
+   gem "ms_graph_mailer", github: "VandaPharma/ms_graph_mailer", branch: "main"
    ```
 
 2. Quickest switch: in your environment files, rename `:microsoft_graph` to `:ms_graph` and
@@ -27,8 +27,9 @@ switching means renaming the gem, the module and the delivery method.
    `MsGraphMailer::` wherever your code references it (e.g. `rescue` clauses).
 3. Recommended: run `bin/rails generate ms_graph_mailer:install`, move the settings into
    `MsGraphMailer.configure`, and remove them from the environment files. That enables AWS
-   Secrets Manager credentials, `save_to_sent_items = false`, the `MAIL_DELIVERY_METHOD` switch,
-   the default From, job retries and the rake tasks.
+   Secrets Manager credentials, `save_to_sent_items = false`, job retries and the rake tasks.
+   Like GitLab's gem, this gem only handles Graph: choosing SMTP elsewhere and the mailers'
+   default From stay in your application.
 
 ## Behaviour differences to note
 

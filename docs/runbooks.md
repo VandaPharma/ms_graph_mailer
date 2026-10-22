@@ -32,11 +32,14 @@ No application restart is needed.
 
 With static credentials, deploy the new value and restart instead.
 
-## Roll back to SMTP
+## Stop using Graph (e.g. roll back to SMTP)
 
-1. Set `MAIL_DELIVERY_METHOD=smtp` for the application (requires `smtp_settings`).
+The gem has no SMTP switch; the application decides whether to call `MsGraphMailer.configure`.
+With the setup in [rails-integration.md](rails-integration.md#graph-in-some-environments-smtp-or-others-elsewhere):
+
+1. Set `MAIL_DELIVERY_METHOD=smtp` for the application.
 2. Restart web and background-job processes.
-3. `bin/rails ms_graph_mailer:check` shows `delivery_method: smtp`.
+3. `bin/rails ms_graph_mailer:check` shows `delivery_method: smtp` and `not configured`.
 
 Unset the variable and restart to return to Graph.
 

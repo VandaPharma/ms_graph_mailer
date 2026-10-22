@@ -12,18 +12,22 @@ Based on GitLab's [`microsoft_graph_mailer`](https://gitlab.com/gitlab-org/gitla
   rotation that needs **no restart**. Static credentials work too.
 - **Reliability**: cached access tokens, HTTP timeouts, short in-process retries for throttling
   and outages, and ActiveJob retries for `deliver_later`.
-- **`MAIL_DELIVERY_METHOD` switch**: Microsoft Graph by default, SMTP as a rollback path.
-- **Shared-mailbox From policy**: a default From of `"<App Name> <mailbox>"`, a helper for
-  `"<Person> via <App Name>"`, and protection against Exchange `ErrorSendAsDenied`.
+- **From enforcement**: a From on another address is sent as the mailbox
+  (`"<Person> via <App Name>"`, Reply-To kept) instead of being rejected with `ErrorSendAsDenied`.
 - **Rails integration**: Railtie, install generator, and `check` / `smoke` rake tasks.
 - **PHI/PII-safe logging**: no secrets, tokens, recipients or message content in logs or errors.
+
+The gem only handles Microsoft Graph. Choosing between Graph and another delivery method
+(SMTP, `letter_opener`, `:test`) and setting your mailers' default From stay in your application;
+see [docs/rails-integration.md](docs/rails-integration.md).
 
 Supports Ruby 3.1 – 3.4 and Rails 6.1 – 8.1 (CI: Ruby 3.1.2 + Rails 6.1.7, Ruby 3.4.8 + Rails 8.1).
 
 Install from this repository:
 
 ```ruby
-gem "ms_graph_mailer", github: "VandaPharma/ms_graph_mailer", tag: "v1.0.0"
+gem "ms_graph_mailer", github: "VandaPharma/ms_graph_mailer", branch: "main"
+# or pin a release: tag: "vX.Y.Z"
 ```
 
 > The module is `MsGraphMailer`, which the unrelated `ms-graph-mailer` gem also uses; don't install
@@ -37,7 +41,7 @@ gem "ms_graph_mailer", github: "VandaPharma/ms_graph_mailer", tag: "v1.0.0"
 - [Sent Items: MIME vs JSON](#sent-items-mime-vs-json)
 - [Sending on behalf of a person](#sending-on-behalf-of-a-person)
 - [deliver_now and deliver_later](#deliver_now-and-deliver_later)
-- [Switching to SMTP (rollback)](#switching-to-smtp-rollback)
+- [Graph only where you want it (SMTP fallback)](#graph-only-where-you-want-it-smtp-fallback)
 - [Rake tasks](#rake-tasks)
 - [Using it without Rails](#using-it-without-rails)
 - [Errors](#errors)
@@ -55,7 +59,7 @@ gem "ms_graph_mailer", github: "VandaPharma/ms_graph_mailer", tag: "v1.0.0"
 
    ```ruby
    # Gemfile
-   gem "ms_graph_mailer", github: "VandaPharma/ms_graph_mailer", tag: "v1.0.0"
+   gem "ms_graph_mailer", github: "VandaPharma/ms_graph_mailer", branch: "main"
    gem "aws-sdk-secretsmanager", require: false # only when the credentials come from AWS Secrets Manager
    ```
 
@@ -79,17 +83,20 @@ gem "ms_graph_mailer", github: "VandaPharma/ms_graph_mailer", tag: "v1.0.0"
      config.aws_secret_id = "shared/entra-mailer/#{Rails.env}"
      config.aws_region    = "us-east-1"
 
-     config.display_name     = -> { "My App" }
-     config.set_default_from = true
-
-     config.delivery_method    = ENV["MAIL_DELIVERY_METHOD"]   # unset = Graph in graph_environments
-     config.graph_environments = %w[staging production]
-     config.smtp_settings      = { address: "smtp.example.com", port: 587 } # rollback only
+     config.display_name = -> { "My App" } # used when a From on another address is rewritten
    end
    ```
 
-5. Remove any `default from:` from `ApplicationMailer`, and any other initializer that sets
-   `delivery_method` or `smtp_settings`.
+   Calling `MsGraphMailer.configure` makes `:ms_graph` the delivery method. Wrap it in a condition
+   if some environments should keep another delivery method (see
+   [below](#graph-only-where-you-want-it-smtp-fallback)).
+
+5. Send From the mailbox, e.g. in `ApplicationMailer`:
+
+   ```ruby
+   default from: -> { email_address_with_name("notifications@example.com", "My App") }
+   ```
+
 6. Verify on a server: `bin/rails ms_graph_mailer:check`, then
    `bin/rails "ms_graph_mailer:smoke[you@example.com]"`.
 
@@ -123,11 +130,8 @@ Every option, with defaults, is in [docs/configuration.md](docs/configuration.md
 | `tenant`, `client_id`, `client_secret` | `nil` | Entra app credentials given in the initializer |
 | `aws_secret_id`, `aws_region`, `aws_secret_ttl` | `nil`, `nil`, `600` | Entra app credentials read from AWS Secrets Manager (instead of the above) |
 | `credentials_provider` | `:auto` | Which of the two sources to use; `:auto` picks the one that is set (both set = boot error). `:static` / `:aws_secrets_manager` force one. |
-| `display_name` | `nil` | From display name; string or callable evaluated per message |
-| `set_default_from` | `false` | Set ActionMailer's default From to `"<display_name> <user_id>"` |
-| `delivery_method` | `ENV["MAIL_DELIVERY_METHOD"]` | `"microsoft_graph"`, `"smtp"`, or `nil` (Graph in `graph_environments`) |
-| `graph_environments` | `%w[production]` | Environments that use Graph when `delivery_method` is unset |
-| `smtp_settings` | `nil` | Used when `delivery_method` is `"smtp"` |
+| `display_name` | `nil` | App name used when `enforce_from` rewrites a From to `"<person> via <display_name>"`; string or callable |
+| `enforce_from` | `true` | Send a From on another address as `user_id` instead of letting Exchange reject it |
 
 ## Sent Items: MIME vs JSON
 
@@ -154,15 +158,16 @@ message to a customer), send from the shared mailbox and identify the person wit
 ```ruby
 mail(
   to: email.recipient,
-  from: MsGraphMailer.from_on_behalf_of(user.full_name), # "Jane Doe via My App <notifications@example.com>"
+  from: email_address_with_name("notifications@example.com", "#{user.full_name} via My App"),
   cc: user.email,
   reply_to: user.email,
   subject: email.subject
 )
 ```
 
-If a mailer sets any other From, `enforce_from` (default `true`) rewrites it the same way so
-Exchange does not reject the message.
+This works the same over SMTP. If a mailer sets a From on any other address, `enforce_from`
+(default `true`) rewrites it to `"<name> via <display_name>" <user_id>` with Reply-To set to the
+original address, so Exchange does not reject the message.
 
 > Exchange Online may show the **mailbox's display name** instead of the name in the From header.
 > Test this once with the smoke task (see [docs/runbooks.md](docs/runbooks.md#first-live-test)).
@@ -181,22 +186,40 @@ Both work unchanged.
 Timeouts (`open_timeout` 5 s, `read_timeout` 20 s) keep a slow Graph call from holding a web
 request for long.
 
-## Switching to SMTP (rollback)
+## Graph only where you want it (SMTP fallback)
 
-```shell
-MAIL_DELIVERY_METHOD=smtp   # then restart the web and job processes
+The gem does not choose delivery methods. Configure it only where mail should go through Graph,
+and keep the application's own setting elsewhere. For example, Graph in staging and production
+with an SMTP fallback through an environment variable:
+
+```ruby
+# config/initializers/ms_graph_mailer.rb
+mail_delivery_method = ENV["MAIL_DELIVERY_METHOD"].presence ||
+                       ("microsoft_graph" if Rails.env.staging? || Rails.env.production?)
+
+case mail_delivery_method
+when "smtp"
+  ActionMailer::Base.delivery_method = :smtp
+  ActionMailer::Base.smtp_settings = { address: "smtp.example.com", port: 587 }
+when "microsoft_graph"
+  MsGraphMailer.configure do |config|
+    # ...
+  end
+when nil
+  # development / test keep letter_opener, :test, ...
+else
+  raise ArgumentError, "MAIL_DELIVERY_METHOD must be microsoft_graph or smtp"
+end
 ```
 
-`smtp_settings` must be configured. Unset the variable and restart to return to Graph.
-In environments outside `graph_environments` with no variable set (typically development and
-test), the gem leaves your existing delivery method (`letter_opener`, `:test`, ...) alone.
+Job retries for transient Graph errors are only added when the gem is configured.
 
 ## Rake tasks
 
 | Task | What it does |
 |---|---|
-| `bin/rails ms_graph_mailer:check` | Prints the active configuration, loads the credentials and requests a token. Sends nothing. Prints tenant and client IDs, never the secret. |
-| `bin/rails "ms_graph_mailer:smoke[to@example.com]"` | Sends one test message with the default From |
+| `bin/rails ms_graph_mailer:check` | Prints the active delivery method and, when the gem is configured, loads the credentials and requests a token. Sends nothing. Prints tenant and client IDs, never the secret. |
+| `bin/rails "ms_graph_mailer:smoke[to@example.com]"` | Sends one test message through the active delivery method, with the application's default From |
 | `bin/rails "ms_graph_mailer:smoke[to@example.com,Jane Doe via My App]"` | Same, with a custom From name, to check which name recipients see |
 
 ## Using it without Rails

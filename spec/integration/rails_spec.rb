@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 ENV["RAILS_ENV"] = "test"
-ENV.delete("MAIL_DELIVERY_METHOD")
 require_relative "../dummy/config/application"
 Dummy::Application.initialize!
 
@@ -9,6 +8,9 @@ require "rake"
 require "tmpdir"
 
 class DummyMailer < ActionMailer::Base
+  # The application sets its own default From on the user_id mailbox.
+  default from: "Dummy App <notifications@example.com>"
+
   def notice(to)
     mail(to: to, subject: "Notice", content_type: "text/html", body: "<p>Notice</p>")
   end
@@ -18,7 +20,7 @@ class DummyMailer < ActionMailer::Base
   def on_behalf_of(to, person_name, person_email)
     mail(
       to: to,
-      from: MsGraphMailer.from_on_behalf_of(person_name),
+      from: email_address_with_name("notifications@example.com", "#{person_name} via Dummy App"),
       cc: person_email,
       reply_to: person_email,
       subject: "From a person",
@@ -64,7 +66,7 @@ RSpec.describe "Rails integration" do
     message
   end
 
-  it "registers and selects the Graph delivery method in graph_environments" do
+  it "selects the Graph delivery method when configure is called" do
     expect(ActionMailer::Base.delivery_method).to eq(:ms_graph)
     expect(ActionMailer::Base.ms_graph_settings).to include(user_id: "notifications@example.com",
                                                                          save_to_sent_items: false)
@@ -88,9 +90,17 @@ RSpec.describe "Rails integration" do
     state.each { |ivar, value| MsGraphMailer.instance_variable_set(ivar, value) }
   end
 
-  it "sets the default From to '<display_name> <user_id>'" do
-    expect(DummyMailer.notice("patient@example.org").from).to eq([ "notifications@example.com" ])
-    expect(DummyMailer.notice("patient@example.org")[:from].to_s).to eq("Dummy App <notifications@example.com>")
+  it "does not change the application's default From" do
+    expect(ActionMailer::Base.default[:from]).to be_nil
+  end
+
+  it "sends a From on another address as the mailbox, '<person> via <display_name>', with Reply-To" do
+    stub_send_mail
+    DummyMailer.notice("patient@example.org").tap { |m| m.from = "Jane Doe <jane@example.com>" }.deliver_now
+
+    message = sent_message["message"]
+    expect(message["from"]).to eq("emailAddress" => { "address" => "notifications@example.com", "name" => "Jane Doe via Dummy App" })
+    expect(message["replyTo"]).to eq([ { "emailAddress" => { "address" => "jane@example.com" } } ])
   end
 
   it "delivers with deliver_now, without a Sent Items copy" do
@@ -134,24 +144,13 @@ RSpec.describe "Rails integration" do
     expect(retried.first[:at]).to be > Time.now.to_f
   end
 
-  it "switches to SMTP when delivery_method is smtp" do
+  it "rejects an invalid configuration at boot" do
     config = MsGraphMailer.config
-    mailer = Class.new(ActionMailer::Base)
-    config.delivery_method = "smtp"
-    MsGraphMailer.apply!(mailer)
-    expect(mailer.delivery_method).to eq(:smtp)
-    expect(mailer.smtp_settings).to include(address: "smtp.example.com")
-  ensure
-    config.delivery_method = nil
-  end
-
-  it "rejects an unknown delivery method at boot" do
-    config = MsGraphMailer.config
-    config.delivery_method = "sendgrid"
+    config.user_id = nil
     expect { MsGraphMailer.apply!(Class.new(ActionMailer::Base)) }
-      .to raise_error(MsGraphMailer::ConfigurationError)
+      .to raise_error(MsGraphMailer::ConfigurationError, /user_id/)
   ensure
-    config.delivery_method = nil
+    config.user_id = "notifications@example.com"
   end
 
   it "provides the rake tasks" do
@@ -164,9 +163,15 @@ RSpec.describe "Rails integration" do
     send_mail = stub_send_mail
     out = StringIO.new
     MsGraphMailer::Diagnostics.check(out: out)
-    expect(out.string).to include("delivery_method:      microsoft_graph", "token:                OK")
+    expect(out.string).to include("delivery_method:      ms_graph", "credentials_provider: static (auto)", "token:                OK")
     expect(out.string).not_to include("client-secret")
     expect(send_mail).not_to have_been_requested
+  end
+
+  it "sends a smoke test with the default From" do
+    stub_send_mail
+    MsGraphMailer::Diagnostics.smoke(to: "me@example.com", out: StringIO.new)
+    expect(sent_message["message"]["from"]["emailAddress"]).to eq("address" => "notifications@example.com", "name" => "Dummy App")
   end
 
   it "sends a smoke test with a custom From name (step 0 check)" do
