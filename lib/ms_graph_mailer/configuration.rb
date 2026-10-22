@@ -5,7 +5,6 @@ module MsGraphMailer
   # See docs/configuration.md for every option.
   class Configuration
     DELIVERY_METHODS = %w[microsoft_graph smtp].freeze
-    CREDENTIALS_PROVIDERS = %w[static aws_secrets_manager].freeze
 
     # --- Same settings as GitLab's microsoft_graph_mailer 0.1.0 ---
     attr_accessor :user_id, :tenant, :client_id, :client_secret, :azure_ad_endpoint, :graph_endpoint
@@ -39,7 +38,7 @@ module MsGraphMailer
 
       @save_to_sent_items = true
 
-      @credentials_provider = :static
+      @credentials_provider = :auto
       @aws_secret_id = nil
       @aws_region = nil
       @aws_secret_ttl = Credentials::AwsSecretsManager::DEFAULT_TTL
@@ -91,6 +90,14 @@ module MsGraphMailer
       end
     end
 
+    # "static" or "aws_secrets_manager" (resolves :auto), or "custom" for a provider object.
+    def resolved_credentials_provider
+      provider = credentials_provider
+      return "custom" if provider.respond_to?(:current) && provider.respond_to?(:refresh!)
+
+      Credentials.provider_name(delivery_settings)
+    end
+
     # Settings hash handed to MsGraphMailer::Delivery.
     def delivery_settings
       {
@@ -124,16 +131,18 @@ module MsGraphMailer
       provider = credentials_provider
       return if provider.respond_to?(:current) && provider.respond_to?(:refresh!)
 
-      case provider.to_s
+      unless Credentials::PROVIDERS.include?(provider.to_s) || provider.to_s.empty?
+        raise ConfigurationError,
+              "credentials_provider must be one of #{Credentials::PROVIDERS.join(', ')} (got #{provider.inspect})"
+      end
+
+      case Credentials.provider_name(delivery_settings)
       when "static"
         missing = { tenant: tenant, client_id: client_id, client_secret: client_secret }
                   .select { |_, value| blank?(value) }.keys
         raise ConfigurationError, "Static credentials are missing #{missing.join(', ')}" if missing.any?
       when "aws_secrets_manager"
         raise ConfigurationError, "aws_secret_id is required for credentials_provider :aws_secrets_manager" if blank?(aws_secret_id)
-      else
-        raise ConfigurationError,
-              "credentials_provider must be one of #{CREDENTIALS_PROVIDERS.join(', ')} (got #{provider.inspect})"
       end
     end
 

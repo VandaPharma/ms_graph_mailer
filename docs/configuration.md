@@ -28,13 +28,35 @@ raises `MsGraphMailer::ConfigurationError` at boot, not at the first email.
 
 ## Credentials
 
+The Entra app credentials come from **one** of two sources:
+
+| Source | Set | Rotation |
+|---|---|---|
+| The initializer (`:static`) | `tenant`, `client_id`, `client_secret` (e.g. from `ENV` or Rails credentials) | Deploy the new value and restart |
+| AWS Secrets Manager (`:aws_secrets_manager`) | `aws_secret_id` (and `aws_region`) | Update the secret; no restart |
+
+```ruby
+# Option A: in the initializer
+config.tenant        = ENV["ENTRA_TENANT_ID"]
+config.client_id     = ENV["ENTRA_CLIENT_ID"]
+config.client_secret = ENV["ENTRA_CLIENT_SECRET"]
+
+# Option B: AWS Secrets Manager
+config.aws_secret_id = "shared/entra-mailer/#{Rails.env}"
+config.aws_region    = "us-east-1"
+```
+
+With the default `credentials_provider = :auto`, the gem uses whichever source is set. If both
+are set, boot fails with `ConfigurationError` unless `credentials_provider` names one; if neither
+is set, boot fails with a message listing both options (only in environments that use Graph).
+
 | Option | Default | Description |
 |---|---|---|
-| `credentials_provider` | `:static` | `:static`, `:aws_secrets_manager`, or any object responding to `current` and `refresh!` (both return `{ tenant:, client_id:, client_secret: }`) |
-| `tenant` | `nil` | Static: directory (tenant) id or domain |
-| `client_id` | `nil` | Static: application (client) id |
-| `client_secret` | `nil` | Static: client secret value |
-| `aws_secret_id` | `nil` | AWS: secret name or ARN. Required for `:aws_secrets_manager` |
+| `credentials_provider` | `:auto` | `:auto` (detect from the settings), `:static`, `:aws_secrets_manager`, or any object responding to `current` and `refresh!` (both return `{ tenant:, client_id:, client_secret: }`) |
+| `tenant` | `nil` | Initializer source: directory (tenant) id or domain |
+| `client_id` | `nil` | Initializer source: application (client) id |
+| `client_secret` | `nil` | Initializer source: client secret value |
+| `aws_secret_id` | `nil` | AWS source: secret name or ARN |
 | `aws_region` | `nil` (SDK default chain) | AWS: region of the secret, e.g. `us-east-1` |
 | `aws_secret_ttl` | `600` | AWS: seconds before the cached secret is re-read |
 

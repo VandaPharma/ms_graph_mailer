@@ -15,8 +15,10 @@ All notable changes to this project are documented here. The format follows
   `graph_endpoint`).
 - `save_to_sent_items` setting: `true` sends MIME (as GitLab's 0.1.0), `false` sends JSON with
   `saveToSentItems: false`.
-- Credentials providers: `:static` and `:aws_secrets_manager` (in-memory cache with TTL, reload on
-  `invalid_client`, rotation without restart, last-good-value fallback), or a custom object.
+- Entra app credentials from either the initializer (`tenant`, `client_id`, `client_secret`) or
+  AWS Secrets Manager (`aws_secret_id`; in-memory cache with TTL, reload on `invalid_client`,
+  rotation without restart, last-good-value fallback). `credentials_provider :auto` (default)
+  uses whichever is configured; `:static`, `:aws_secrets_manager` or a custom object force one.
 - In-memory access token cache (no `oauth2` dependency).
 - HTTP timeouts, in-process retries for throttling/5xx/connection failures, `TransientError`, and
   `ActionMailer::MailDeliveryJob.retry_on` for `deliver_later`.

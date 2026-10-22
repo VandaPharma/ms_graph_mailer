@@ -18,24 +18,29 @@ MsGraphMailer.configure do |config|
   config.save_to_sent_items = false
 
   # ---------------------------------------------------------------------------
-  # Entra app credentials
+  # Entra app credentials: configure ONE of the two sources below
   # ---------------------------------------------------------------------------
-  # Option A: AWS Secrets Manager (recommended for several apps sharing one Entra
+  # credentials_provider (default :auto) picks the source from what is set:
+  #   tenant/client_id/client_secret -> :static
+  #   aws_secret_id                  -> :aws_secrets_manager
+  # Setting both raises at boot unless credentials_provider names one of them.
+  # config.credentials_provider = :auto   # or :static / :aws_secrets_manager
+
+  # Option A: in this initializer, exactly like GitLab's microsoft_graph_mailer 0.1.0.
+  # Read the values from ENV or Rails credentials; never commit the secret.
+  # config.tenant        = ENV["ENTRA_TENANT_ID"]
+  # config.client_id     = ENV["ENTRA_CLIENT_ID"]
+  # config.client_secret = ENV["ENTRA_CLIENT_SECRET"]
+
+  # Option B: AWS Secrets Manager (recommended when several apps share one Entra
   # app). The secret is JSON: {"tenant_id": "...", "client_id": "...", "client_secret": "..."}.
   # AWS access uses the default credential chain (e.g. the EC2 instance role).
   # Requires `gem "aws-sdk-secretsmanager"` in the application's Gemfile.
   # The secret is re-read every aws_secret_ttl seconds, and immediately when
   # Entra rejects it, so rotating it needs no restart.
-  config.credentials_provider = :aws_secrets_manager
-  config.aws_secret_id        = ENV.fetch("ENTRA_MAILER_SECRET_ID", "shared/entra-mailer/#{Rails.env}")
-  config.aws_region           = ENV.fetch("ENTRA_MAILER_SECRET_REGION", "us-east-1")
-  config.aws_secret_ttl       = ENV.fetch("ENTRA_SECRET_TTL_SECONDS", 600).to_i
-
-  # Option B: static credentials, exactly like GitLab's microsoft_graph_mailer 0.1.0.
-  # config.credentials_provider = :static
-  # config.tenant        = ENV["ENTRA_TENANT_ID"]
-  # config.client_id     = ENV["ENTRA_CLIENT_ID"]
-  # config.client_secret = ENV["ENTRA_CLIENT_SECRET"]
+  config.aws_secret_id  = ENV.fetch("ENTRA_MAILER_SECRET_ID", "shared/entra-mailer/#{Rails.env}")
+  config.aws_region     = ENV.fetch("ENTRA_MAILER_SECRET_REGION", "us-east-1")
+  config.aws_secret_ttl = ENV.fetch("ENTRA_SECRET_TTL_SECONDS", 600).to_i
 
   # National clouds only (defaults are the global endpoints).
   # config.azure_ad_endpoint = "https://login.microsoftonline.us"

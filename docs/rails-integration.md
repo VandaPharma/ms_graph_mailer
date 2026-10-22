@@ -23,7 +23,7 @@ Nothing contacts AWS or Microsoft at boot.
 
    ```ruby
    gem "ms_graph_mailer", github: "VandaPharma/ms_graph_mailer", tag: "v1.0.0"
-   gem "aws-sdk-secretsmanager", require: false # for credentials_provider :aws_secrets_manager
+   gem "aws-sdk-secretsmanager", require: false # only when the credentials come from AWS Secrets Manager
    ```
 
 2. `bin/rails generate ms_graph_mailer:install`, then edit the initializer.
@@ -52,7 +52,6 @@ Each application's initializer differs only in `display_name` (and any legacy `s
 MsGraphMailer.configure do |config|
   config.user_id              = "notifications@example.com"
   config.save_to_sent_items   = false
-  config.credentials_provider = :aws_secrets_manager
   config.aws_secret_id        = "shared/entra-mailer/#{Rails.env}"
   config.aws_region           = "us-east-1"
   config.display_name         = -> { "App A" }           # or a value from the app's own settings
@@ -96,10 +95,14 @@ With the variable unset and those environments outside `graph_environments`, dev
 `letter_opener` (or whatever it uses) and test keeps `:test`, so existing mailer tests continue to
 work. The default From (when `set_default_from` is on) applies in every environment.
 
-To try Graph from a laptop, use static credentials from environment variables and
-`MAIL_DELIVERY_METHOD=microsoft_graph`:
+To try Graph from a laptop without AWS access, give the credentials in the initializer from
+environment variables and set `MAIL_DELIVERY_METHOD=microsoft_graph`. `credentials_provider`
+then selects the initializer source whenever those variables are present:
 
 ```ruby
+config.aws_secret_id = "shared/entra-mailer/#{Rails.env}"
+config.aws_region    = "us-east-1"
+
 if ENV["ENTRA_CLIENT_SECRET"].present?
   config.credentials_provider = :static
   config.tenant        = ENV["ENTRA_TENANT_ID"]

@@ -56,7 +56,7 @@ gem "ms_graph_mailer", github: "VandaPharma/ms_graph_mailer", tag: "v1.0.0"
    ```ruby
    # Gemfile
    gem "ms_graph_mailer", github: "VandaPharma/ms_graph_mailer", tag: "v1.0.0"
-   gem "aws-sdk-secretsmanager", require: false # only for credentials_provider :aws_secrets_manager
+   gem "aws-sdk-secretsmanager", require: false # only when the credentials come from AWS Secrets Manager
    ```
 
 4. Generate and edit the initializer:
@@ -71,9 +71,13 @@ gem "ms_graph_mailer", github: "VandaPharma/ms_graph_mailer", tag: "v1.0.0"
      config.user_id            = "notifications@example.com"
      config.save_to_sent_items = false
 
-     config.credentials_provider = :aws_secrets_manager
-     config.aws_secret_id        = "shared/entra-mailer/#{Rails.env}"
-     config.aws_region           = "us-east-1"
+     # Entra app credentials: either in the initializer...
+     # config.tenant        = ENV["ENTRA_TENANT_ID"]
+     # config.client_id     = ENV["ENTRA_CLIENT_ID"]
+     # config.client_secret = ENV["ENTRA_CLIENT_SECRET"]
+     # ...or from AWS Secrets Manager:
+     config.aws_secret_id = "shared/entra-mailer/#{Rails.env}"
+     config.aws_region    = "us-east-1"
 
      config.display_name     = -> { "My App" }
      config.set_default_from = true
@@ -99,7 +103,7 @@ deliver_now / deliver_later
         ▼
 MsGraphMailer::Delivery
   1. From is not user_id?  → send as user_id, "<name> via <display_name>", Reply-To kept
-  2. credentials           ← static settings, or AWS Secrets Manager (cached, TTL, reload on invalid_client)
+  2. credentials           ← initializer settings, or AWS Secrets Manager (cached, TTL, reload on invalid_client)
   3. access token          ← cached in memory until ~5 minutes before expiry
   4. POST {graph}/v1.0/users/{user_id}/sendMail
        save_to_sent_items: true  → MIME body (as GitLab's 0.1.0)
@@ -116,7 +120,9 @@ Every option, with defaults, is in [docs/configuration.md](docs/configuration.md
 |---|---|---|
 | `user_id` | – (required) | Mailbox Graph sends from (same as `ms_graph_mailer`) |
 | `save_to_sent_items` | `true` | `false` = no Sent Items copy (JSON send) |
-| `credentials_provider` | `:static` | `:static` (`tenant`, `client_id`, `client_secret`) or `:aws_secrets_manager` (`aws_secret_id`, `aws_region`, `aws_secret_ttl`) |
+| `tenant`, `client_id`, `client_secret` | `nil` | Entra app credentials given in the initializer |
+| `aws_secret_id`, `aws_region`, `aws_secret_ttl` | `nil`, `nil`, `600` | Entra app credentials read from AWS Secrets Manager (instead of the above) |
+| `credentials_provider` | `:auto` | Which of the two sources to use; `:auto` picks the one that is set (both set = boot error). `:static` / `:aws_secrets_manager` force one. |
 | `display_name` | `nil` | From display name; string or callable evaluated per message |
 | `set_default_from` | `false` | Set ActionMailer's default From to `"<display_name> <user_id>"` |
 | `delivery_method` | `ENV["MAIL_DELIVERY_METHOD"]` | `"microsoft_graph"`, `"smtp"`, or `nil` (Graph in `graph_environments`) |

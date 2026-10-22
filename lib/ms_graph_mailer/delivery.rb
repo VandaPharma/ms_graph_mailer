@@ -5,6 +5,7 @@ require_relative "errors"
 require_relative "client"
 require_relative "access_token"
 require_relative "message_builder"
+require_relative "credentials"
 require_relative "credentials/static"
 require_relative "credentials/aws_secrets_manager"
 
@@ -21,7 +22,7 @@ module MsGraphMailer
       azure_ad_endpoint: "https://login.microsoftonline.com",
       graph_endpoint: "https://graph.microsoft.com",
       save_to_sent_items: true,
-      credentials_provider: :static,
+      credentials_provider: :auto,
       enforce_from: true,
       open_timeout: 5,
       read_timeout: 20,
@@ -156,7 +157,7 @@ module MsGraphMailer
       provider = settings[:credentials_provider]
       return provider if provider.respond_to?(:current) && provider.respond_to?(:refresh!)
 
-      case provider.to_s
+      case Credentials.provider_name(settings)
       when "static"
         Credentials::Static.new(tenant: settings[:tenant], client_id: settings[:client_id],
                                 client_secret: settings[:client_secret])
@@ -166,7 +167,7 @@ module MsGraphMailer
           error_notifier: settings[:error_notifier], logger: logger
         )
       else
-        raise ConfigurationError, "Unknown credentials_provider #{provider.inspect} (use :static or :aws_secrets_manager)"
+        raise ConfigurationError, "Unknown credentials_provider #{provider.inspect} (use :auto, :static or :aws_secrets_manager)"
       end
     end
 

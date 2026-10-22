@@ -20,6 +20,42 @@ RSpec.describe MsGraphMailer::Delivery do
       expect(d.ms_graph_settings[:azure_ad_endpoint]).to eq("https://login.microsoftonline.com")
     end
 
+    describe "credentials source" do
+      def credentials_of(delivery)
+        delivery.send(:credentials)
+      end
+
+      let(:aws_only) { { user_id: "notifications@example.com", aws_secret_id: "shared/entra-mailer/test", aws_region: "us-east-1" } }
+
+      it "uses tenant/client_id/client_secret from the settings when given" do
+        expect(credentials_of(described_class.new(base_settings))).to be_a(MsGraphMailer::Credentials::Static)
+      end
+
+      it "uses AWS Secrets Manager when only aws_secret_id is given" do
+        credentials = credentials_of(described_class.new(aws_only))
+        expect(credentials).to be_a(MsGraphMailer::Credentials::AwsSecretsManager)
+        expect(credentials.secret_id).to eq("shared/entra-mailer/test")
+      end
+
+      it "rejects both sources unless credentials_provider picks one" do
+        expect { described_class.new(base_settings(aws_secret_id: "shared/entra-mailer/test")) }
+          .to raise_error(MsGraphMailer::ConfigurationError, /Both tenant\/client_id\/client_secret and aws_secret_id/)
+      end
+
+      it "honours an explicit credentials_provider when both are given" do
+        both = base_settings(aws_secret_id: "shared/entra-mailer/test")
+        expect(credentials_of(described_class.new(both.merge(credentials_provider: :static))))
+          .to be_a(MsGraphMailer::Credentials::Static)
+        expect(credentials_of(described_class.new(both.merge(credentials_provider: "aws_secrets_manager"))))
+          .to be_a(MsGraphMailer::Credentials::AwsSecretsManager)
+      end
+
+      it "explains both options when no credentials are given" do
+        expect { described_class.new(user_id: "notifications@example.com") }
+          .to raise_error(MsGraphMailer::ConfigurationError, /set tenant, client_id and client_secret, or aws_secret_id/)
+      end
+    end
+
     it "rejects an unknown credentials provider" do
       expect { described_class.new(base_settings(credentials_provider: :vault)) }
         .to raise_error(MsGraphMailer::ConfigurationError, /Unknown credentials_provider/)

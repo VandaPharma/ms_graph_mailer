@@ -20,8 +20,9 @@ module MsGraphMailer
         out.puts "save_to_sent_items:   #{config.save_to_sent_items ? true : false}"
         return true unless method == "microsoft_graph"
 
-        out.puts "credentials_provider: #{config.credentials_provider}"
-        out.puts "aws_secret_id:        #{config.aws_secret_id} (#{config.aws_region || 'default region'})" if config.credentials_provider.to_s == "aws_secrets_manager"
+        provider = config.resolved_credentials_provider
+        out.puts "credentials_provider: #{provider}#{' (auto)' if config.credentials_provider.to_s == 'auto'}"
+        out.puts "aws_secret_id:        #{config.aws_secret_id} (#{config.aws_region || 'default region'})" if provider == "aws_secrets_manager"
 
         delivery = Delivery.new(config.delivery_settings)
         credentials = delivery.send(:credentials).current

@@ -4,7 +4,7 @@ MsGraphMailer.configure do |config|
   config.user_id            = "notifications@example.com"
   config.save_to_sent_items = false
 
-  config.credentials_provider = :static
+  # Credentials given here; credentials_provider stays :auto and detects them.
   config.tenant        = "tenant-id"
   config.client_id     = "client-id"
   config.client_secret = "client-secret"

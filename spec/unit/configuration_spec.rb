@@ -59,6 +59,47 @@ RSpec.describe MsGraphMailer::Configuration do
       expect { config.validate!("production") }.to raise_error(MsGraphMailer::ConfigurationError, /aws_secret_id/)
     end
 
+    it "accepts credentials from the initializer without naming a provider" do
+      config.user_id = "notifications@example.com"
+      config.tenant = "t"
+      config.client_id = "c"
+      config.client_secret = "s"
+      expect { config.validate!("production") }.not_to raise_error
+      expect(config.resolved_credentials_provider).to eq("static")
+    end
+
+    it "accepts an AWS secret without naming a provider" do
+      config.user_id = "notifications@example.com"
+      config.aws_secret_id = "shared/entra-mailer/production"
+      expect { config.validate!("production") }.not_to raise_error
+      expect(config.resolved_credentials_provider).to eq("aws_secrets_manager")
+    end
+
+    it "rejects both credential sources unless credentials_provider picks one" do
+      config.user_id = "notifications@example.com"
+      config.tenant = "t"
+      config.client_id = "c"
+      config.client_secret = "s"
+      config.aws_secret_id = "shared/entra-mailer/production"
+      expect { config.validate!("production") }.to raise_error(MsGraphMailer::ConfigurationError, /Both/)
+
+      config.credentials_provider = :aws_secrets_manager
+      expect { config.validate!("production") }.not_to raise_error
+      expect(config.resolved_credentials_provider).to eq("aws_secrets_manager")
+    end
+
+    it "requires one credential source" do
+      config.user_id = "notifications@example.com"
+      expect { config.validate!("production") }
+        .to raise_error(MsGraphMailer::ConfigurationError, /tenant, client_id and client_secret, or aws_secret_id/)
+    end
+
+    it "rejects an unknown credentials_provider" do
+      config.user_id = "notifications@example.com"
+      config.credentials_provider = :vault
+      expect { config.validate!("production") }.to raise_error(MsGraphMailer::ConfigurationError, /must be one of auto, static, aws_secrets_manager/)
+    end
+
     it "skips validation when the environment keeps its own delivery method" do
       expect { config.validate!("development") }.not_to raise_error
     end
