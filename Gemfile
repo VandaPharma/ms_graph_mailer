@@ -1,0 +1,13 @@
+# frozen_string_literal: true
+
+source "https://rubygems.org"
+
+gemspec
+
+# Default development target; CI also runs gemfiles/*.gemfile.
+gem "rails", "~> 8.1.3"
+
+gem "aws-sdk-secretsmanager", "~> 1.0"
+gem "rake", "~> 13.0"
+gem "rspec", "~> 3.13"
+gem "webmock", "~> 3.23"
