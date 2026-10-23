@@ -168,6 +168,31 @@ RSpec.describe "Rails integration" do
     expect(send_mail).not_to have_been_requested
   end
 
+  it "reports AWS access keys masked in the check output, never the secret key" do
+    config = MsGraphMailer.config
+    saved = config.delivery_settings.slice(:tenant, :client_id, :client_secret)
+    config.tenant = config.client_id = config.client_secret = nil
+    config.aws_secret_id = "shared/entra-mailer/test"
+    config.aws_region = "us-east-1"
+    config.aws_access_key_id = "AKIAEXAMPLE0001"
+    config.aws_secret_access_key = "example-secret-key"
+    stub_request(:post, "https://secretsmanager.us-east-1.amazonaws.com/").to_return(
+      status: 200, body: { SecretString: { tenant_id: "tenant-id", client_id: "client-id", client_secret: "client-secret" }.to_json }.to_json
+    )
+    out = StringIO.new
+    MsGraphMailer::Diagnostics.check(out: out)
+    expect(out.string).to include("credentials_provider: aws_secrets_manager (auto)",
+                                  "aws_credentials:      access key ***********0001 (from initializer)", "token:                OK")
+    expect(out.string).not_to include("example-secret-key", "client-secret", "AKIAEXAMPLE0001")
+    expect(WebMock).to(have_requested(:post, "https://secretsmanager.us-east-1.amazonaws.com/").with do |request|
+      request.headers["Authorization"].to_s.include?("Credential=AKIAEXAMPLE0001/")
+    end)
+  ensure
+    config.aws_secret_id = config.aws_region = config.aws_access_key_id = config.aws_secret_access_key = nil
+    saved.each { |key, value| config.public_send("#{key}=", value) }
+    MsGraphMailer::Credentials::AwsSecretsManager.reset_registry!
+  end
+
   it "sends a smoke test with the default From" do
     stub_send_mail
     MsGraphMailer::Diagnostics.smoke(to: "me@example.com", out: StringIO.new)

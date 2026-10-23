@@ -12,6 +12,9 @@ module MsGraphMailer
 
     # --- Credentials ---
     attr_accessor :credentials_provider, :aws_secret_id, :aws_region, :aws_secret_ttl
+    # Optional AWS keys for reading the secret; without them the default AWS
+    # credential chain (e.g. the EC2 instance role) is used.
+    attr_accessor :aws_access_key_id, :aws_secret_access_key, :aws_session_token
 
     # --- From header ---
     attr_accessor :display_name, :enforce_from
@@ -37,6 +40,9 @@ module MsGraphMailer
       @aws_secret_id = nil
       @aws_region = nil
       @aws_secret_ttl = Credentials::AwsSecretsManager::DEFAULT_TTL
+      @aws_access_key_id = nil
+      @aws_secret_access_key = nil
+      @aws_session_token = nil
 
       @display_name = nil
       @enforce_from = true
@@ -73,6 +79,9 @@ module MsGraphMailer
         raise ConfigurationError, "Static credentials are missing #{missing.join(', ')}" if missing.any?
       when "aws_secrets_manager"
         raise ConfigurationError, "aws_secret_id is required for credentials_provider :aws_secrets_manager" if blank?(aws_secret_id)
+        if blank?(aws_access_key_id) != blank?(aws_secret_access_key)
+          raise ConfigurationError, "Set both aws_access_key_id and aws_secret_access_key, or neither (to use the IAM role)"
+        end
       end
     end
 
@@ -98,6 +107,9 @@ module MsGraphMailer
         aws_secret_id: aws_secret_id,
         aws_region: aws_region,
         aws_secret_ttl: aws_secret_ttl,
+        aws_access_key_id: aws_access_key_id,
+        aws_secret_access_key: aws_secret_access_key,
+        aws_session_token: aws_session_token,
         display_name: display_name,
         enforce_from: enforce_from,
         open_timeout: open_timeout,

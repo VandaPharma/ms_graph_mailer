@@ -64,6 +64,9 @@ is set, boot fails with a message listing both options (only in environments tha
 | `aws_secret_id` | `nil` | AWS source: secret name or ARN |
 | `aws_region` | `nil` (SDK default chain) | AWS: region of the secret, e.g. `us-east-1` |
 | `aws_secret_ttl` | `600` | AWS: seconds before the cached secret is re-read |
+| `aws_access_key_id` | `nil` | AWS: access key for reading the secret. Set together with `aws_secret_access_key` when no IAM role is available; leave both unset to use the default AWS credential chain (e.g. the EC2 instance role) |
+| `aws_secret_access_key` | `nil` | AWS: secret key paired with `aws_access_key_id` |
+| `aws_session_token` | `nil` | AWS: session token, only for temporary keys |
 
 ### AWS Secrets Manager secret format
 
@@ -76,8 +79,16 @@ is set, boot fails with a message listing both options (only in environments tha
 (`"tenant"` is accepted instead of `"tenant_id"`.)
 
 - Requires `gem "aws-sdk-secretsmanager"` in the application's Gemfile.
-- AWS credentials come from the SDK's default chain: EC2 instance role, ECS task role,
-  `AWS_*` environment variables, or a shared profile. No AWS keys are configured in this gem.
+- AWS access for reading the secret:
+  - **IAM role (recommended):** leave `aws_access_key_id` / `aws_secret_access_key` unset. The SDK's
+    default chain is used: EC2 instance role, ECS task role, `AWS_*` environment variables, or a
+    shared profile.
+  - **Access keys:** when no IAM role is available, set both `aws_access_key_id` and
+    `aws_secret_access_key` (plus `aws_session_token` for temporary keys), read from `ENV` or Rails
+    credentials. They are used only for this secret, not for the rest of the application's AWS
+    calls. Setting only one of the two raises `ConfigurationError` at boot.
+  - `bin/rails ms_graph_mailer:check` shows which one is in use (`aws_credentials: default chain
+    (IAM role)` or `access key ****1234 (from initializer)`); the secret key is never printed.
 - The secret is read on the first email, not at boot, so `assets:precompile` and `db:migrate` do
   not need AWS access.
 - Each process caches the secret in memory (never in Redis, files or logs) for `aws_secret_ttl`

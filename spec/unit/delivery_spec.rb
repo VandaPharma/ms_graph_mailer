@@ -37,6 +37,13 @@ RSpec.describe MsGraphMailer::Delivery do
         expect(credentials.secret_id).to eq("shared/entra-mailer/test")
       end
 
+      it "passes AWS access keys to the AWS Secrets Manager source" do
+        credentials = credentials_of(described_class.new(aws_only.merge(aws_access_key_id: "AKIAEXAMPLE0001",
+                                                                        aws_secret_access_key: "example-secret-key")))
+        expect(credentials.aws_credentials_source).to eq("access_keys")
+        expect(credentials_of(described_class.new(aws_only)).aws_credentials_source).to eq("default_chain")
+      end
+
       it "rejects both sources unless credentials_provider picks one" do
         expect { described_class.new(base_settings(aws_secret_id: "shared/entra-mailer/test")) }
           .to raise_error(MsGraphMailer::ConfigurationError, /Both tenant\/client_id\/client_secret and aws_secret_id/)

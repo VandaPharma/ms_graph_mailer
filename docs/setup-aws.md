@@ -58,7 +58,21 @@ config.aws_region           = "us-east-1"
 config.aws_secret_ttl       = 600
 ```
 
-No AWS keys go into the app: the SDK uses the instance or task role. Do not also set
+No AWS keys go into the app: the SDK uses the instance or task role.
+
+### Hosts without an IAM role
+
+Create an IAM user with only the policy from step 2, create an access key for it, and give the
+key to the app from `ENV` or Rails credentials (never commit it):
+
+```ruby
+config.aws_access_key_id     = ENV["ENTRA_MAILER_AWS_ACCESS_KEY_ID"]
+config.aws_secret_access_key = ENV["ENTRA_MAILER_AWS_SECRET_ACCESS_KEY"]
+```
+
+The keys are used only to read this secret. Leave both unset to go back to the IAM role. Rotate
+the access key periodically: create a second key, deploy it, then deactivate and delete the old
+one (this one needs a restart, unlike the Entra secret). Do not also set
 `tenant` / `client_id` / `client_secret` in the initializer (or set
 `config.credentials_provider = :aws_secrets_manager` explicitly).
 

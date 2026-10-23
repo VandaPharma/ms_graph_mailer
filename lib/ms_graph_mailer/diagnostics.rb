@@ -24,7 +24,11 @@ module MsGraphMailer
         out.puts "aws_secret_id:        #{config.aws_secret_id} (#{config.aws_region || 'default region'})" if provider == "aws_secrets_manager"
 
         delivery = Delivery.new(config.delivery_settings)
-        credentials = delivery.send(:credentials).current
+        source = delivery.send(:credentials)
+        if source.respond_to?(:aws_credentials_source)
+          out.puts "aws_credentials:      " + (source.aws_credentials_source == "access_keys" ? "access key #{source.masked_access_key_id} (from initializer)" : "default chain (IAM role)")
+        end
+        credentials = source.current
         out.puts "tenant:               #{credentials[:tenant]}"
         out.puts "client_id:            #{credentials[:client_id]}"
         AccessToken.fetch(delivery.send(:client), credentials)

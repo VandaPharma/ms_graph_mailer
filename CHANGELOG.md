@@ -19,6 +19,8 @@ All notable changes to this project are documented here. The format follows
   AWS Secrets Manager (`aws_secret_id`; in-memory cache with TTL, reload on `invalid_client`,
   rotation without restart, last-good-value fallback). `credentials_provider :auto` (default)
   uses whichever is configured; `:static`, `:aws_secrets_manager` or a custom object force one.
+- `aws_access_key_id`, `aws_secret_access_key` and `aws_session_token` for reading the AWS
+  secret where no IAM role is available; without them the default AWS credential chain is used.
 - In-memory access token cache (no `oauth2` dependency).
 - HTTP timeouts, in-process retries for throttling/5xx/connection failures, `TransientError`, and
   `ActionMailer::MailDeliveryJob.retry_on` for `deliver_later`.

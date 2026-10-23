@@ -9,7 +9,8 @@ Based on GitLab's [`microsoft_graph_mailer`](https://gitlab.com/gitlab-org/gitla
 
 - **`save_to_sent_items` setting**: keep or skip the copy in the sending mailbox's Sent Items.
 - **Credentials from AWS Secrets Manager**: one Entra app shared by many Rails apps, with secret
-  rotation that needs **no restart**. Static credentials work too.
+  rotation that needs **no restart**. Read through the IAM role, or with AWS access keys from the
+  initializer where there is no role. Credentials in the initializer work too.
 - **Reliability**: cached access tokens, HTTP timeouts, short in-process retries for throttling
   and outages, and ActiveJob retries for `deliver_later`.
 - **From enforcement**: a From on another address is sent as the mailbox
@@ -37,7 +38,7 @@ gem "ms_graph_mailer", github: "VandaPharma/ms_graph_mailer", branch: "main"
 
 - [Quick start](#quick-start)
 - [How it works](#how-it-works)
-- [Configuration](#configuration) (full reference: [docs/configuration.md](docs/configuration.md))
+- [Configuration](#configuration): [all options](#all-options), [example with every option](#example-with-every-option)
 - [Sent Items: MIME vs JSON](#sent-items-mime-vs-json)
 - [Sending on behalf of a person](#sending-on-behalf-of-a-person)
 - [deliver_now and deliver_later](#deliver_now-and-deliver_later)
@@ -121,17 +122,132 @@ MsGraphMailer::Delivery
 
 ## Configuration
 
-Every option, with defaults, is in [docs/configuration.md](docs/configuration.md). The most important ones:
+All options are set in `config/initializers/ms_graph_mailer.rb` inside `MsGraphMailer.configure`.
+The configuration is validated at boot: an invalid value raises `MsGraphMailer::ConfigurationError`
+before any mail is sent. More detail on each group: [docs/configuration.md](docs/configuration.md).
 
-| Option | Default | Purpose |
+### All options
+
+**Mailbox and endpoints** (same as GitLab's `microsoft_graph_mailer` 0.1.0)
+
+| Option | Default | Description |
 |---|---|---|
-| `user_id` | – (required) | Mailbox Graph sends from (same as `ms_graph_mailer`) |
-| `save_to_sent_items` | `true` | `false` = no Sent Items copy (JSON send) |
-| `tenant`, `client_id`, `client_secret` | `nil` | Entra app credentials given in the initializer |
-| `aws_secret_id`, `aws_region`, `aws_secret_ttl` | `nil`, `nil`, `600` | Entra app credentials read from AWS Secrets Manager (instead of the above) |
-| `credentials_provider` | `:auto` | Which of the two sources to use; `:auto` picks the one that is set (both set = boot error). `:static` / `:aws_secrets_manager` force one. |
-| `display_name` | `nil` | App name used when `enforce_from` rewrites a From to `"<person> via <display_name>"`; string or callable |
-| `enforce_from` | `true` | Send a From on another address as `user_id` instead of letting Exchange reject it |
+| `user_id` | – (required) | Mailbox Graph sends from (email address/UPN or user object id). Every message is sent as this mailbox. |
+| `azure_ad_endpoint` | `https://login.microsoftonline.com` | Entra token endpoint. National clouds, e.g. `https://login.microsoftonline.us` |
+| `graph_endpoint` | `https://graph.microsoft.com` | Microsoft Graph endpoint. National clouds, e.g. `https://graph.microsoft.us` |
+
+**Sent Items**
+
+| Option | Default | Description |
+|---|---|---|
+| `save_to_sent_items` | `true` | `true`: MIME send (as GitLab's 0.1.0), a copy is kept in the mailbox's Sent Items. `false`: JSON send with `saveToSentItems: false`, no copy. See [Sent Items: MIME vs JSON](#sent-items-mime-vs-json). |
+
+**Entra app credentials**: configure **one** of the two sources
+
+| Option | Default | Description |
+|---|---|---|
+| `credentials_provider` | `:auto` | `:auto` uses whichever source below is set (both set = boot error, neither = boot error). `:static` or `:aws_secrets_manager` force one. Also accepts any object responding to `current` and `refresh!` (both return `{ tenant:, client_id:, client_secret: }`). |
+| `tenant` | `nil` | *Initializer source:* directory (tenant) id or domain |
+| `client_id` | `nil` | *Initializer source:* application (client) id |
+| `client_secret` | `nil` | *Initializer source:* client secret value (read it from `ENV` or Rails credentials; never commit it) |
+| `aws_secret_id` | `nil` | *AWS source:* Secrets Manager secret name or ARN holding `{"tenant_id", "client_id", "client_secret"}` |
+| `aws_region` | `nil` (SDK default) | *AWS source:* region of the secret, e.g. `us-east-1` |
+| `aws_secret_ttl` | `600` | *AWS source:* seconds before the cached secret is re-read. Also re-read immediately when Entra rejects it, so rotation needs no restart. |
+
+**AWS access for reading the secret** (AWS source only)
+
+| Option | Default | Description |
+|---|---|---|
+| `aws_access_key_id` | `nil` | Access key for Secrets Manager when no IAM role is available. Set together with `aws_secret_access_key`. |
+| `aws_secret_access_key` | `nil` | Secret key paired with `aws_access_key_id` |
+| `aws_session_token` | `nil` | Session token, only for temporary keys |
+
+Leave the three unset to use the default AWS credential chain (EC2 instance role, ECS task role,
+`AWS_*` environment variables, shared profile). Setting only one of the key pair raises at boot.
+`bin/rails ms_graph_mailer:check` shows which is used; the secret key is never printed.
+
+**From header**
+
+| Option | Default | Description |
+|---|---|---|
+| `enforce_from` | `true` | Graph can only send as `user_id`. A message whose From is another address is sent as `user_id`, named `"<original name> via <display_name>"`, with Reply-To set to the original address. A missing From becomes `"<display_name> <user_id>"`. |
+| `display_name` | `nil` | App name used by `enforce_from`. String or callable (evaluated per message), e.g. `-> { AppConfig["MAILER_EMAIL_NAME"] }` |
+
+The gem does not set your mailers' default From; set it in the application (see [Quick start](#quick-start)).
+
+**Reliability**
+
+| Option | Default | Description |
+|---|---|---|
+| `open_timeout` | `5` | Seconds to open a connection to Entra or Graph |
+| `read_timeout` | `20` | Seconds to wait for a response |
+| `max_transient_retries` | `2` | In-process retries for 429, 5xx and connections that never opened (`deliver_now` and `deliver_later`) |
+| `max_retry_sleep` | `2` | Maximum seconds between in-process retries (`Retry-After` is honoured up to this) |
+| `job_retry_attempts` | `5` | `deliver_later` attempts for transient errors (`ActionMailer::MailDeliveryJob.retry_on`). `1` or less disables it. |
+
+**Observability**
+
+| Option | Default | Description |
+|---|---|---|
+| `logger` | `Rails.logger` | Boot summary, From rewrites, credential reloads. Never secrets, tokens, recipients or message content. |
+| `error_notifier` | Honeybadger, if loaded | `->(error, context) { ... }`, called when a Secrets Manager refresh fails while a cached value is still in use |
+
+### Example with every option
+
+```ruby
+# config/initializers/ms_graph_mailer.rb
+MsGraphMailer.configure do |config|
+  # Mailbox and endpoints
+  config.user_id           = "notifications@example.com"
+  config.azure_ad_endpoint = "https://login.microsoftonline.com"
+  config.graph_endpoint    = "https://graph.microsoft.com"
+
+  # Sent Items
+  config.save_to_sent_items = false
+
+  # Entra app credentials: ONE of the two sources
+  config.credentials_provider = :auto # or :static / :aws_secrets_manager
+
+  #   Initializer source
+  # config.tenant        = ENV["ENTRA_TENANT_ID"]
+  # config.client_id     = ENV["ENTRA_CLIENT_ID"]
+  # config.client_secret = ENV["ENTRA_CLIENT_SECRET"]
+
+  #   AWS Secrets Manager source
+  config.aws_secret_id  = "shared/entra-mailer/#{Rails.env}"
+  config.aws_region     = "us-east-1"
+  config.aws_secret_ttl = 600
+
+  #   AWS access for the secret: leave unset to use the IAM role
+  # config.aws_access_key_id     = ENV["ENTRA_MAILER_AWS_ACCESS_KEY_ID"]
+  # config.aws_secret_access_key = ENV["ENTRA_MAILER_AWS_SECRET_ACCESS_KEY"]
+  # config.aws_session_token     = ENV["ENTRA_MAILER_AWS_SESSION_TOKEN"]
+
+  # From header
+  config.enforce_from = true
+  config.display_name = -> { "My App" }
+
+  # Reliability
+  config.open_timeout          = 5
+  config.read_timeout          = 20
+  config.max_transient_retries = 2
+  config.max_retry_sleep       = 2
+  config.job_retry_attempts    = 5
+
+  # Observability
+  config.logger         = Rails.logger
+  config.error_notifier = ->(error, context) { Honeybadger.notify(error, context: context) }
+end
+```
+
+`bin/rails generate ms_graph_mailer:install` writes the same initializer with comments.
+
+### Settings without `configure`
+
+`MsGraphMailer::Delivery.new(settings)` and `config.action_mailer.ms_graph_settings = {...}` accept
+the same options as a hash with the same names (e.g. `user_id:`, `aws_secret_id:`,
+`aws_access_key_id:`, `save_to_sent_items:`), apart from `job_retry_attempts`, which only applies
+through `configure`. See [Using it without Rails](#using-it-without-rails).
 
 ## Sent Items: MIME vs JSON
 

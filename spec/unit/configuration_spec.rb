@@ -52,6 +52,22 @@ RSpec.describe MsGraphMailer::Configuration do
       expect(config.resolved_credentials_provider).to eq("aws_secrets_manager")
     end
 
+    it "accepts AWS access keys for reading the secret" do
+      config.user_id = "notifications@example.com"
+      config.aws_secret_id = "shared/entra-mailer/production"
+      config.aws_access_key_id = "AKIAEXAMPLE0001"
+      config.aws_secret_access_key = "example-secret-key"
+      expect { config.validate! }.not_to raise_error
+      expect(config.delivery_settings).to include(aws_access_key_id: "AKIAEXAMPLE0001", aws_secret_access_key: "example-secret-key")
+    end
+
+    it "rejects only one of the AWS access key pair" do
+      config.user_id = "notifications@example.com"
+      config.aws_secret_id = "shared/entra-mailer/production"
+      config.aws_access_key_id = "AKIAEXAMPLE0001"
+      expect { config.validate! }.to raise_error(MsGraphMailer::ConfigurationError, /both aws_access_key_id and aws_secret_access_key/)
+    end
+
     it "requires one credential source" do
       config.user_id = "notifications@example.com"
       expect { config.validate! }

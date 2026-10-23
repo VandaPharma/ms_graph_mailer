@@ -45,13 +45,20 @@ MsGraphMailer.configure do |config|
 
   # Option B: AWS Secrets Manager (recommended when several apps share one Entra
   # app). The secret is JSON: {"tenant_id": "...", "client_id": "...", "client_secret": "..."}.
-  # AWS access uses the default credential chain (e.g. the EC2 instance role).
   # Requires `gem "aws-sdk-secretsmanager"` in the application's Gemfile.
   # The secret is re-read every aws_secret_ttl seconds, and immediately when
   # Entra rejects it, so rotating it needs no restart.
   config.aws_secret_id  = ENV.fetch("ENTRA_MAILER_SECRET_ID", "shared/entra-mailer/#{Rails.env}")
   config.aws_region     = ENV.fetch("ENTRA_MAILER_SECRET_REGION", "us-east-1")
   config.aws_secret_ttl = ENV.fetch("ENTRA_SECRET_TTL_SECONDS", 600).to_i
+
+  # AWS access for reading the secret. Leave these unset to use the default AWS
+  # credential chain (e.g. the EC2 instance's IAM role, recommended). Set both
+  # when no IAM role is available; read them from ENV or Rails credentials and
+  # never commit them. aws_session_token is only for temporary keys.
+  # config.aws_access_key_id     = ENV["ENTRA_MAILER_AWS_ACCESS_KEY_ID"]
+  # config.aws_secret_access_key = ENV["ENTRA_MAILER_AWS_SECRET_ACCESS_KEY"]
+  # config.aws_session_token     = ENV["ENTRA_MAILER_AWS_SESSION_TOKEN"]
 
   # National clouds only (defaults are the global endpoints).
   # config.azure_ad_endpoint = "https://login.microsoftonline.us"

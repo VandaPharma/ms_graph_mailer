@@ -72,6 +72,50 @@ RSpec.describe MsGraphMailer::Credentials::AwsSecretsManager do
     expect { described_class.new(secret_id: "") }.to raise_error(MsGraphMailer::ConfigurationError)
   end
 
+  describe "AWS credentials for reading the secret" do
+    let(:fake_client) { Aws::SecretsManager::Client.new(stub_responses: true, region: "us-east-1") }
+
+    before { fake_client.stub_responses(:get_secret_value, secret("s1")) }
+
+    it "uses the access keys from the initializer when given" do
+      expect(Aws::SecretsManager::Client).to receive(:new) do |**options|
+        expect(options[:region]).to eq("us-east-1")
+        expect(options[:credentials]).to be_a(Aws::Credentials)
+        expect(options[:credentials].access_key_id).to eq("AKIAEXAMPLE0001")
+        expect(options[:credentials].secret_access_key).to eq("example-secret-key")
+        expect(options[:credentials].session_token).to eq("example-session")
+        fake_client
+      end
+      p = described_class.new(secret_id: "x", region: "us-east-1", access_key_id: "AKIAEXAMPLE0001",
+                              secret_access_key: "example-secret-key", session_token: "example-session")
+      expect(p.current[:client_secret]).to eq("s1")
+      expect(p.aws_credentials_source).to eq("access_keys")
+      expect(p.masked_access_key_id).to eq("***********0001")
+    end
+
+    it "falls back to the default credential chain (IAM role) without access keys" do
+      expect(Aws::SecretsManager::Client).to receive(:new).with(region: "us-east-1").and_return(fake_client)
+      p = described_class.new(secret_id: "x", region: "us-east-1", access_key_id: "", secret_access_key: nil)
+      expect(p.current[:client_secret]).to eq("s1")
+      expect(p.aws_credentials_source).to eq("default_chain")
+      expect(p.masked_access_key_id).to be_nil
+    end
+
+    it "requires both access key id and secret access key" do
+      expect { described_class.new(secret_id: "x", access_key_id: "AKIAEXAMPLE0001") }
+        .to raise_error(MsGraphMailer::ConfigurationError, /both aws_access_key_id and aws_secret_access_key/)
+      expect { described_class.new(secret_id: "x", secret_access_key: "example-secret-key") }
+        .to raise_error(MsGraphMailer::ConfigurationError, /both aws_access_key_id and aws_secret_access_key/)
+    end
+
+    it "keeps separate instances for different access keys" do
+      a = described_class.for(secret_id: "x", region: "us-east-1", access_key_id: "AKIA1", secret_access_key: "s")
+      expect(described_class.for(secret_id: "x", region: "us-east-1", access_key_id: "AKIA1", secret_access_key: "s")).to equal(a)
+      expect(described_class.for(secret_id: "x", region: "us-east-1", access_key_id: "AKIA1", secret_access_key: "rotated")).not_to equal(a)
+      expect(described_class.for(secret_id: "x", region: "us-east-1")).not_to equal(a)
+    end
+  end
+
   it "shares one instance per secret and region" do
     a = described_class.for(secret_id: "x", region: "us-east-1")
     expect(described_class.for(secret_id: "x", region: "us-east-1")).to equal(a)

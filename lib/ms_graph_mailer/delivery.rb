@@ -164,7 +164,8 @@ module MsGraphMailer
       when "aws_secrets_manager"
         Credentials::AwsSecretsManager.for(
           secret_id: settings[:aws_secret_id], region: settings[:aws_region], ttl: settings[:aws_secret_ttl],
-          error_notifier: settings[:error_notifier], logger: logger
+          access_key_id: settings[:aws_access_key_id], secret_access_key: settings[:aws_secret_access_key],
+          session_token: settings[:aws_session_token], error_notifier: settings[:error_notifier], logger: logger
         )
       else
         raise ConfigurationError, "Unknown credentials_provider #{provider.inspect} (use :auto, :static or :aws_secrets_manager)"
